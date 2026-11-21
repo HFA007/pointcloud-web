@@ -285,87 +285,9 @@
   </main>
 </div>
 
-<script>
-// ==================== Excel格式智能解析器 ====================
-function parseExcelData(workbook) {
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  
-  // 寻找表头行（包含"名称"+"控制"/"X"/"Y"/"Z"的行）
-  let headerRow = -1;
-  for (let i = 0; i < Math.min(20, data.length); i++) {
-    const row = data[i].map(c => String(c).trim());
-    const hasName = row.some(c => c.includes('名称') || c === '点名' || c === '点号');
-    const hasAxis = row.some(c => ['X','Y','Z','x','y','z','控制','轴'].includes(c));
-    if (hasName && hasAxis) {
-      headerRow = i;
-      break;
-    }
-  }
-  if (headerRow === -1) headerRow = 5; // 默认从第6行开始（0-indexed=5）
-
-  const points = {};
-  let nameCol = -1, axisCol = -1, nomCol = -1, measCol = -1, tolCol = -1;
-  
-  // 自动识别列位置
-  const header = data[headerRow].map(c => String(c).trim());
-  header.forEach((h, idx) => {
-    if (h.includes('名称') || h === '点名' || h === '点号' || h === '特征名') nameCol = idx;
-    if (['X','Y','Z','x','y','z','控制','轴','方向'].includes(h)) axisCol = idx;
-    if (h.includes('名义') || h.includes('理论') || h === 'NOMINAL') nomCol = idx;
-    if (h.includes('测量') || h.includes('实测') || h === 'MEASURED') measCol = idx;
-    if (h.includes('公差') || h === 'TOL' || h === '偏差带') tolCol = idx;
-  });
-
-  // 如果没找到列，按常见位置兜底（名称0，轴1，名义2，测量3，公差4）
-  if (nameCol === -1) nameCol = 0;
-  if (axisCol === -1) axisCol = 1;
-  if (nomCol === -1) nomCol = 2;
-  if (measCol === -1) measCol = 3;
-  if (tolCol === -1) tolCol = 4;
-
-  // 解析每行数据
-  for (let i = headerRow + 1; i < data.length; i++) {
-    const row = data[i];
-    if (!row || row.length < 5) continue;
-    const name = String(row[nameCol] || '').trim();
-    const axis = String(row[axisCol] || '').trim().toUpperCase();
-    if (!name || !['X','Y','Z'].includes(axis)) continue;
-
-    let nom = parseFloat(row[nomCol]);
-    let meas = parseFloat(row[measCol]);
-    if (isNaN(nom) || isNaN(meas)) continue;
-
-    // 解析公差（支持±0.7、0.7、+/-0.7等格式）
-    let tol = 0.7;
-    if (tolCol >=0 && row[tolCol]) {
-      const tolStr = String(row[tolCol]).replace(/[±+]/g, '').trim();
-      const parsedTol = parseFloat(tolStr);
-      if (!isNaN(parsedTol) && parsedTol > 0) tol = parsedTol;
-    }
-
-    // 根据名称判断公差类型（基准/孔/安装位一般±0.7，形面±0.5）
-    if (tol === 0.7) {
-      if (/^\d{2,3}H\d$/.test(name)) {
-        // 98H1这类形面点，公差±0.5
-        tol = 0.5;
-      } else if (name.includes('圆') || name.includes('矩形') || name.includes('槽')) {
-        // 孔/特征，默认按实际公差，如果没读到就0.5
-        tol = 0.5;
-      }
-    }
-
-    if (!points[name]) {
-      points[name] = { name, nx:0, ny:0, nz:0, mx:0, my:0, mz:0, tx:0.7, ty:0.7, tz:0.7 };
-    }
-
-    if (axis === 'X') { points[name].nx = nom; points[name].mx = meas; points[name].tx = tol; }
-    else if (axis === 'Y') { points[name].ny = nom; points[name].my = meas; points[name].ty = tol; }
-    else if (axis === 'Z') { points[name].nz = nom; points[name].mz = meas; points[name].tz = tol; }
-  }
-
-  // 过滤掉不完整的点（必须三个轴都有数据）
-  return Object.values(points).filter(p => 
-    !(p.nx === 0 && p.ny ===0 && p.nz ===0)
-  );
-}
+<script src="core1.js"></script>
+<script src="core2.js"></script>
+<script src="viz.js"></script>
+</body>
+</html>
+<!-- （注：内容由AI生成） -->
