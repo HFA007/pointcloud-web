@@ -18,9 +18,30 @@
   #outOfTolList::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   .upload-zone { border: 2px dashed #cbd5e1; transition: all 0.2s ease; cursor: pointer; }
   .upload-zone:hover, .upload-zone.dragover { border-color: #3b82f6; background: #eff6ff; }
+  #authGate { transition: opacity .25s ease; }
+  #authGate.gate-hidden { opacity: 0; pointer-events: none; }
 </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-white to-blue-50 min-h-screen">
+
+<!-- 登录门禁（前端口令校验） -->
+<div id="authGate" class="fixed inset-0 z-[100] flex items-center justify-center bg-gradient-to-br from-slate-100 via-white to-blue-50">
+  <div class="glass-card rounded-2xl p-8 w-[340px] shadow-xl">
+    <div class="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
+      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v2h8z"/>
+      </svg>
+    </div>
+    <h2 class="text-lg font-bold text-slate-800 text-center mb-1">3D点云偏差矢量分析系统</h2>
+    <p class="text-xs text-slate-500 text-center mb-5">请输入账号密码后进入</p>
+    <label class="block text-[11px] text-slate-500 mb-1">账号</label>
+    <input id="authUser" type="text" autocomplete="username" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-blue-400 mb-3">
+    <label class="block text-[11px] text-slate-500 mb-1">密码</label>
+    <input id="authPass" type="password" autocomplete="current-password" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-blue-400 mb-2">
+    <div id="authMsg" class="text-xs text-red-600 mb-2 hidden">账号或密码错误，请重试</div>
+    <button id="authBtn" class="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-medium shadow hover:shadow-lg transition">进入系统</button>
+  </div>
+</div>
 
 <!-- 顶栏 -->
 <header class="glass-card border-b border-slate-200/60 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
@@ -288,6 +309,7 @@
 <script src="core1.js"></script>
 <script src="core2.js"></script>
 <script src="viz.js"></script>
+<script src="auth.js"></script>
 </body>
 </html>
 <!-- （注：内容由AI生成） -->
