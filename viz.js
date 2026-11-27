@@ -36,13 +36,16 @@ function analyze() {
   document.getElementById('globalTolPanel').style.opacity = usePerPoint ? '0.5' : '1';
   document.getElementById('globalTolPanel').style.pointerEvents = usePerPoint ? 'none' : 'auto';
   
+  // 重新分析时按名称保留单点自定义外观配置（颜色/大小/可见性）
+  const prevCustom = {};
+  dataPoints.forEach(p => { if (p.custom) prevCustom[p.name] = p.custom; });
   dataPoints = currentPoints.map(p => {
     const dx = p.mx - p.nx, dy = p.my - p.ny, dz = p.mz - p.nz;
     const tx = usePerPoint ? p.tx : globalTolX;
     const ty = usePerPoint ? p.ty : globalTolY;
     const tz = usePerPoint ? p.tz : globalTolZ;
     return {
-      ...p, dx, dy, dz, tx, ty, tz,
+      ...p, custom: prevCustom[p.name], dx, dy, dz, tx, ty, tz,
       outX: Math.abs(dx) > tx,
       outY: Math.abs(dy) > ty,
       outZ: Math.abs(dz) > tz
@@ -80,62 +83,74 @@ function render() {
   const showLabels = document.getElementById('showLabels').checked;
   const showDevLabels = document.getElementById('showDevLabels').checked;
   const axesVisible = document.getElementById('showAxes').checked;
+  const nameFont = parseInt(document.getElementById('nameFontSize').value, 10) || 48;
+  const devFont = parseInt(document.getElementById('devFontSize').value, 10) || 24;
+  const showAllNames = document.getElementById('showAllNames').checked;
+  document.getElementById('nameFontVal').textContent = nameFont;
+  document.getElementById('devFontVal').textContent = devFont;
   if (gridHelper) gridHelper.visible = axesVisible;
   if (axesGroup) axesGroup.visible = axesVisible;
-  
+
   filteredPoints.forEach(pt => {
     const nVec = new THREE.Vector3(pt.nx, pt.ny, pt.nz);
     const isOut = pt.outX || pt.outY || pt.outZ;
+    const custom = pt.custom || {};
     const vecScale = parseFloat(document.getElementById('vectorScale').value);
-    
+
     if (showNominal) {
+      const dotColor = custom.dotColor ?? (isOut ? 0x475569 : 0x94a3b8);
+      const dotR = custom.dotSize ?? (isOut ? 4 : 2.5);
       const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(isOut ? 4 : 2.5, 12, 10),
-        new THREE.MeshPhongMaterial({ color: isOut ? 0x475569 : 0x94a3b8, shininess: 60 })
+        new THREE.SphereGeometry(dotR, 12, 10),
+        new THREE.MeshPhongMaterial({ color: dotColor, shininess: 60 })
       );
       dot.position.copy(nVec);
+      dot.userData.pointName = pt.name;
       vizGroup.add(dot);
     }
-    
-    if (!isOut) return;
-    
+
     // 收集所有超差矢量末端点，找到最远的位置放名称（正好在箭头末端，不额外偏移）
     const ends = [];
-    if (showX && pt.outX) {
-      const end = new THREE.Vector3(pt.nx + pt.dx * vecScale, pt.ny, pt.nz);
-      ends.push(end);
-      vizGroup.add(createArrow(nVec, end, 0xef4444));
-      if (showDevLabels) {
-        const lab = makeTextSprite(pt.dx.toFixed(2), '#dc2626', 'rgba(254,226,226,0.95)', 24);
-        lab.position.copy(end).add(new THREE.Vector3(0, 8, 0));
-        vizGroup.add(lab);
+    if (isOut) {
+      if (showX && pt.outX) {
+        const end = new THREE.Vector3(pt.nx + pt.dx * vecScale, pt.ny, pt.nz);
+        ends.push(end);
+        vizGroup.add(createArrow(nVec, end, 0xef4444));
+        if (showDevLabels) {
+          const lab = makeTextSprite(pt.dx.toFixed(2), '#dc2626', 'rgba(254,226,226,0.95)', devFont);
+          lab.position.copy(end).add(new THREE.Vector3(0, 8, 0));
+          vizGroup.add(lab);
+        }
+      }
+      if (showY && pt.outY) {
+        const end = new THREE.Vector3(pt.nx, pt.ny + pt.dy * vecScale, pt.nz);
+        ends.push(end);
+        vizGroup.add(createArrow(nVec, end, 0x22c55e));
+        if (showDevLabels) {
+          const lab = makeTextSprite(pt.dy.toFixed(2), '#16a34a', 'rgba(220,252,231,0.95)', devFont);
+          lab.position.copy(end).add(new THREE.Vector3(0, 8, 0));
+          vizGroup.add(lab);
+        }
+      }
+      if (showZ && pt.outZ) {
+        const end = new THREE.Vector3(pt.nx, pt.ny, pt.nz + pt.dz * vecScale);
+        ends.push(end);
+        vizGroup.add(createArrow(nVec, end, 0x3b82f6));
+        if (showDevLabels) {
+          const lab = makeTextSprite(pt.dz.toFixed(2), '#2563eb', 'rgba(219,234,254,0.95)', devFont);
+          lab.position.copy(end).add(new THREE.Vector3(0, 8, 0));
+          vizGroup.add(lab);
+        }
       }
     }
-    if (showY && pt.outY) {
-      const end = new THREE.Vector3(pt.nx, pt.ny + pt.dy * vecScale, pt.nz);
-      ends.push(end);
-      vizGroup.add(createArrow(nVec, end, 0x22c55e));
-      if (showDevLabels) {
-        const lab = makeTextSprite(pt.dy.toFixed(2), '#16a34a', 'rgba(220,252,231,0.95)', 24);
-        lab.position.copy(end).add(new THREE.Vector3(0, 8, 0));
-        vizGroup.add(lab);
-      }
-    }
-    if (showZ && pt.outZ) {
-      const end = new THREE.Vector3(pt.nx, pt.ny, pt.nz + pt.dz * vecScale);
-      ends.push(end);
-      vizGroup.add(createArrow(nVec, end, 0x3b82f6));
-      if (showDevLabels) {
-        const lab = makeTextSprite(pt.dz.toFixed(2), '#2563eb', 'rgba(219,234,254,0.95)', 24);
-        lab.position.copy(end).add(new THREE.Vector3(0, 8, 0));
-        vizGroup.add(lab);
-      }
-    }
-    
-    // 特征名称放在理论点（坐标原点）附近，向上偏移避免遮挡点位
-    if (showLabels && ends.length > 0) {
-      const nameLab = makeTextSprite(pt.name, '#0f172a', 'rgba(255,255,255,0.95)', 48);
+
+    // 特征名称放在理论点附近，向上偏移避免遮挡点位；超差常显，合格点需开启“显示全部点名称”
+    if (showLabels && custom.labelVisible !== false && (isOut || showAllNames)) {
+      const labColor = custom.labelColor || '#0f172a';
+      const labSize = custom.labelSize || nameFont;
+      const nameLab = makeTextSprite(pt.name, labColor, 'rgba(255,255,255,0.95)', labSize);
       nameLab.position.copy(nVec).add(new THREE.Vector3(0, 15, 0));
+      nameLab.userData.pointName = pt.name;
       vizGroup.add(nameLab);
     }
   });
@@ -349,7 +364,7 @@ function handleFile(file) {
 // ==================== 事件绑定 ====================
 document.getElementById('reAnalyzeBtn').addEventListener('click', analyze);
 document.getElementById('usePerPointTol').addEventListener('change', analyze);
-['showX','showY','showZ','showNominal','showAxes','showLabels','showDevLabels','vectorScale'].forEach(id => {
+['showX','showY','showZ','showNominal','showAxes','showLabels','showDevLabels','vectorScale','nameFontSize','devFontSize','showAllNames'].forEach(id => {
   document.getElementById(id).addEventListener('change', render);
   document.getElementById(id).addEventListener('input', render);
 });
