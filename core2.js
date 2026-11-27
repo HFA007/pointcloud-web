@@ -270,8 +270,10 @@ function makeTextSprite(text, color, bgColor, fontSize) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.minFilter = THREE.LinearFilter;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  const scale = 4;
-  sprite.scale.set(w/fSize * scale, h/fSize * scale, 1);
+  // 世界尺寸随字号线性放大，宽高比保持画布比例；不再用 w/fSize、h/fSize 二次摊薄，
+  // 否则字号越大标签反而越小。
+  const worldH = fSize * 0.14;
+  sprite.scale.set(worldH * (w / h), worldH, 1);
   sprite.renderOrder = 999;
   return sprite;
 }
@@ -381,7 +383,7 @@ function openPointMenu(name, cx, cy) {
       <input type="color" id="pmColor" value="${curColor}" style="width:38px;height:24px;border:none;padding:0;background:none;cursor:pointer;">
     </label>
     <label style="display:block;font-size:12px;color:#475569;margin-bottom:8px;">标签 / 名义点大小 <span id="pmSizeVal" style="font-family:monospace;">${curSize}</span>
-      <input type="range" id="pmSize" min="20" max="130" value="${curSize}" style="width:100%;accent-color:#3b82f6;">
+      <input type="range" id="pmSize" min="20" max="500" value="${curSize}" style="width:100%;accent-color:#3b82f6;">
     </label>
     <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#475569;margin-bottom:10px;">显示名称
       <input type="checkbox" id="pmVisible" ${visible ? 'checked' : ''} style="width:16px;height:16px;accent-color:#64748b;">
@@ -407,7 +409,7 @@ function openPointMenu(name, cx, cy) {
   document.getElementById('pmSize').addEventListener('input', e => {
     const s = parseInt(e.target.value, 10);
     c.labelSize = s;
-    c.dotSize = Math.max(1.5, Math.min(16, s / 12));
+    c.dotSize = Math.max(1.5, Math.min(40, s / 12));
     document.getElementById('pmSizeVal').textContent = s;
     render();
   });
