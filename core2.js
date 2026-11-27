@@ -6,11 +6,21 @@ scene.background = new THREE.Color(0xf8fafc);
 const camera = new THREE.PerspectiveCamera(50, viewport.clientWidth / viewport.clientHeight, 0.1, 50000);
 camera.up.set(0, 0, 1); // 主坐标系 Z 轴向上
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+} catch (err) {
+  console.warn('WebGL 初始化失败，以桩对象降级运行（3D 渲染不可用，界面逻辑仍可操作）', err);
+  renderer = {
+    domElement: document.createElement('canvas'),
+    setSize() {}, setPixelRatio() {}, render() {},
+    shadowMap: { enabled: false }
+  };
+}
 renderer.setSize(viewport.clientWidth, viewport.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-viewport.appendChild(renderer.domElement);
+if (renderer.domElement && renderer.domElement.parentNode !== viewport) viewport.appendChild(renderer.domElement);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.65));
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.75);
@@ -296,3 +306,128 @@ function createArrow(start, end, color) {
   group.add(head);
   return group;
 }
+
+
+// ==================== 单点自定义：单击拾取 + 二级菜单 ====================
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let leftDownPos = null;
+let activePointName = null;
+let pointMenu = null;
+
+viewport.addEventListener('mousedown', e => {
+  if (e.button === 0) leftDownPos = { x: e.clientX, y: e.clientY };
+});
+
+window.addEventListener('mouseup', e => {
+  if (e.button !== 0 || !leftDownPos) return;
+  const dx = e.clientX - leftDownPos.x, dy = e.clientY - leftDownPos.y;
+  leftDownPos = null;
+  if (Math.sqrt(dx * dx + dy * dy) > 4) return; // 拖拽旋转，不触发拾取
+  if (pointMenu && pointMenu.contains(e.target)) return;
+  pickPoint(e.clientX, e.clientY);
+});
+
+function findPoint(name) {
+  return dataPoints.find(p => p.name === name);
+}
+
+function pickPoint(cx, cy) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((cx - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((cy - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(vizGroup.children, true);
+  for (const h of hits) {
+    let o = h.object;
+    while (o && !o.userData.pointName) o = o.parent;
+    if (o && o.userData.pointName) {
+      openPointMenu(o.userData.pointName, cx, cy);
+      return;
+    }
+  }
+  closePointMenu();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+function ensureMenu() {
+  if (pointMenu) return pointMenu;
+  pointMenu = document.createElement('div');
+  pointMenu.id = 'pointCtxMenu';
+  pointMenu.style.cssText = 'position:fixed;z-index:200;width:230px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 10px 30px rgba(15,23,42,.18);padding:14px;font-family:inherit;';
+  document.body.appendChild(pointMenu);
+  pointMenu.addEventListener('mousedown', e => e.stopPropagation());
+  pointMenu.addEventListener('click', e => e.stopPropagation());
+  return pointMenu;
+}
+
+function openPointMenu(name, cx, cy) {
+  const pt = findPoint(name);
+  if (!pt) return;
+  activePointName = name;
+  if (!pt.custom) pt.custom = {};
+  const c = pt.custom;
+  const menu = ensureMenu();
+  const curColor = c.labelColor || '#0f172a';
+  const curSize = c.labelSize || 48;
+  const visible = c.labelVisible !== false;
+
+  menu.innerHTML = `
+    <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:8px;">${escapeHtml(name)}</div>
+    <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#475569;margin-bottom:8px;">标签 / 名义点颜色
+      <input type="color" id="pmColor" value="${curColor}" style="width:38px;height:24px;border:none;padding:0;background:none;cursor:pointer;">
+    </label>
+    <label style="display:block;font-size:12px;color:#475569;margin-bottom:8px;">标签 / 名义点大小 <span id="pmSizeVal" style="font-family:monospace;">${curSize}</span>
+      <input type="range" id="pmSize" min="20" max="90" value="${curSize}" style="width:100%;accent-color:#3b82f6;">
+    </label>
+    <label style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#475569;margin-bottom:10px;">显示名称
+      <input type="checkbox" id="pmVisible" ${visible ? 'checked' : ''} style="width:16px;height:16px;accent-color:#64748b;">
+    </label>
+    <div style="display:flex;gap:6px;">
+      <button id="pmReset" style="flex:1;font-size:12px;padding:6px 0;border-radius:8px;background:#f1f5f9;color:#475569;border:none;cursor:pointer;">恢复默认</button>
+      <button id="pmClose" style="flex:1;font-size:12px;padding:6px 0;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;">关闭</button>
+    </div>`;
+
+  menu.style.display = 'block';
+  const mw = 230, mh = menu.offsetHeight || 240;
+  let left = cx + 12, top = cy + 12;
+  if (left + mw > window.innerWidth - 8) left = cx - mw - 12;
+  if (top + mh > window.innerHeight - 8) top = cy - mh - 12;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+
+  document.getElementById('pmColor').addEventListener('input', e => {
+    c.labelColor = e.target.value;
+    c.dotColor = new THREE.Color(e.target.value).getHex();
+    render();
+  });
+  document.getElementById('pmSize').addEventListener('input', e => {
+    const s = parseInt(e.target.value, 10);
+    c.labelSize = s;
+    c.dotSize = Math.max(1.5, Math.min(9, s / 12));
+    document.getElementById('pmSizeVal').textContent = s;
+    render();
+  });
+  document.getElementById('pmVisible').addEventListener('change', e => {
+    c.labelVisible = e.target.checked;
+    render();
+  });
+  document.getElementById('pmReset').addEventListener('click', () => {
+    delete c.labelColor; delete c.dotColor; delete c.labelSize; delete c.dotSize; delete c.labelVisible;
+    render();
+    openPointMenu(name, cx, cy);
+  });
+  document.getElementById('pmClose').addEventListener('click', closePointMenu);
+}
+
+function closePointMenu() {
+  activePointName = null;
+  if (pointMenu) pointMenu.style.display = 'none';
+}
+
+window.addEventListener('mousedown', e => {
+  if (pointMenu && pointMenu.style.display === 'block' && !pointMenu.contains(e.target)) closePointMenu();
+});
