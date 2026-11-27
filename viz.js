@@ -70,6 +70,13 @@ function analyze() {
   updateStats();
 }
 
+// 按文字颜色亮度自动选背景底色：浅色字配深底，深色字配白底，保证文字与背景始终不同色
+function labelBgFor(hex) {
+  const c = new THREE.Color(hex);
+  const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  return lum >= 0.6 ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.95)';
+}
+
 function render() {
   clearViz();
   const filteredPoints = getFilteredPoints();
@@ -85,9 +92,11 @@ function render() {
   const axesVisible = document.getElementById('showAxes').checked;
   const nameFont = parseInt(document.getElementById('nameFontSize').value, 10) || 48;
   const devFont = parseInt(document.getElementById('devFontSize').value, 10) || 24;
+  const baseDot = parseFloat(document.getElementById('dotSize').value) || 4;
   const showAllNames = document.getElementById('showAllNames').checked;
   document.getElementById('nameFontVal').textContent = nameFont;
   document.getElementById('devFontVal').textContent = devFont;
+  document.getElementById('dotSizeVal').textContent = baseDot;
   if (gridHelper) gridHelper.visible = axesVisible;
   if (axesGroup) axesGroup.visible = axesVisible;
 
@@ -99,7 +108,7 @@ function render() {
 
     if (showNominal) {
       const dotColor = custom.dotColor ?? (isOut ? 0x475569 : 0x94a3b8);
-      const dotR = custom.dotSize ?? (isOut ? 4 : 2.5);
+      const dotR = custom.dotSize ?? (isOut ? baseDot : baseDot * 0.62);
       const dot = new THREE.Mesh(
         new THREE.SphereGeometry(dotR, 12, 10),
         new THREE.MeshPhongMaterial({ color: dotColor, shininess: 60 })
@@ -148,7 +157,7 @@ function render() {
     if (showLabels && custom.labelVisible !== false && (isOut || showAllNames)) {
       const labColor = custom.labelColor || '#0f172a';
       const labSize = custom.labelSize || nameFont;
-      const nameLab = makeTextSprite(pt.name, labColor, 'rgba(255,255,255,0.95)', labSize);
+      const nameLab = makeTextSprite(pt.name, labColor, labelBgFor(labColor), labSize);
       nameLab.position.copy(nVec).add(new THREE.Vector3(0, 15, 0));
       nameLab.userData.pointName = pt.name;
       vizGroup.add(nameLab);
@@ -364,7 +373,7 @@ function handleFile(file) {
 // ==================== 事件绑定 ====================
 document.getElementById('reAnalyzeBtn').addEventListener('click', analyze);
 document.getElementById('usePerPointTol').addEventListener('change', analyze);
-['showX','showY','showZ','showNominal','showAxes','showLabels','showDevLabels','vectorScale','nameFontSize','devFontSize','showAllNames'].forEach(id => {
+['showX','showY','showZ','showNominal','showAxes','showLabels','showDevLabels','vectorScale','nameFontSize','devFontSize','dotSize','showAllNames'].forEach(id => {
   document.getElementById(id).addEventListener('change', render);
   document.getElementById(id).addEventListener('input', render);
 });
