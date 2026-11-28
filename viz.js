@@ -1,6 +1,11 @@
 // ==================== 分析与渲染 ====================
 let dataPoints = [];
 
+// 判断是否为曲面点（P 系列，如 P 1、P12）；其余归为特征元素
+function isSurfacePoint(name) {
+  return /^P\s*\d+/.test(String(name).trim());
+}
+
 // 判断特征类型
 function classifyPoint(name) {
   if (name.includes('基准')) return 'benchmark';
@@ -19,7 +24,9 @@ function getFilteredPoints() {
   const status = document.getElementById('filterStatus').value;
   return dataPoints.filter(p => {
     if (kw && !p.name.toLowerCase().includes(kw)) return false;
-    if (type !== 'all' && classifyPoint(p.name) !== type) return false;
+    if (type === 'surface') { if (!isSurfacePoint(p.name)) return false; }
+    else if (type === 'feature') { if (isSurfacePoint(p.name)) return false; }
+    else if (type !== 'all') { if (classifyPoint(p.name) !== type) return false; }
     const isOut = p.outX || p.outY || p.outZ;
     if (status === 'out' && !isOut) return false;
     if (status === 'ok' && isOut) return false;
