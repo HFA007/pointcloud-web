@@ -71,38 +71,59 @@ function initAxesAndGrid(center, size) {
   scene.add(axesGroup);
 }
 
-// 相机控制
+// 相机控制（轨道式：直接旋转相机环绕注视点的方向向量，避免球坐标翻过极点后方向反转）
 let isDragging = false, isPanning = false;
 let prevMouse = {x:0, y:0};
-let spherical = { radius: 1200, theta: Math.PI, phi: 0.1 };
+let spherical = { radius: 1200 };
+let camOffset = new THREE.Vector3(0, 1, 0.08).normalize(); // 相机相对注视点的方向
 let panOffset = new THREE.Vector3(0,0,0);
 let dataCenter = new THREE.Vector3(0,0,0);
 let viewFlipped = false;       // false: Y 指向屏幕外（前视）; true: Y 指向屏幕里（后视）
 let rightDownPos = null;       // 右键按下位置，用于区分单击与拖拽平移
 
+const UP = new THREE.Vector3(0,0,1);
+const ROT_SPEED = 0.005;       // 弧度/像素
+const PITCH_MIN = THREE.MathUtils.degToRad(18);
+const PITCH_MAX = Math.PI - PITCH_MIN;
+
+function targetPoint() { return dataCenter.clone().add(panOffset); }
+
 function applyFrontView() {
-  if (viewFlipped) {
-    spherical.theta = 0;
-    spherical.phi = Math.PI - 0.1;
-  } else {
-    spherical.theta = Math.PI;
-    spherical.phi = 0.1;
-  }
+  // 前视：相机在 +Y 一侧；后视：翻到 -Y 一侧；带少量 Z 俯仰便于观察
+  camOffset.set(0, viewFlipped ? -1 : 1, 0.08).normalize();
   updateCamera();
 }
 
 function updateCamera() {
-  const sinPhi = Math.sin(spherical.phi), cosPhi = Math.cos(spherical.phi);
-  const sinTheta = Math.sin(spherical.theta), cosTheta = Math.cos(spherical.theta);
-  camera.position.set(
-    spherical.radius * sinPhi * cosTheta + panOffset.x + dataCenter.x,
-    spherical.radius * cosPhi + panOffset.y + dataCenter.y,
-    spherical.radius * sinPhi * sinTheta + panOffset.z + dataCenter.z
-  );
-  camera.lookAt(panOffset.clone().add(dataCenter));
+  const t = targetPoint();
+  camera.position.copy(t).addScaledVector(camOffset, spherical.radius);
+  camera.lookAt(t);
 }
 
-viewport.addEventListener('mousedown', e => {
+// 俯仰限位：限制相机方向与竖直轴的夹角，防止翻过极点导致旋转方向反转
+function clampPitch() {
+  const angle = camOffset.angleTo(UP);
+  if (angle >= PITCH_MIN && angle <= PITCH_MAX) return;
+  const right = new THREE.Vector3().crossVectors(UP, camOffset).normalize();
+  const target = angle < PITCH_MIN ? PITCH_MIN : PITCH_MAX;
+  const q = new THREE.Quaternion().setFromAxisAngle(right, target - angle);
+  camOffset.applyQuaternion(q).normalize();
+}
+
+// 轨道旋转：水平绕竖直轴，竖直绕相机右轴；方向始终跟手，不会在极点处反转
+function orbitRotate(dx, dy) {
+  const qYaw = new THREE.Quaternion().setFromAxisAngle(UP, -dx * ROT_SPEED);
+  camOffset.applyQuaternion(qYaw);
+  const right = new THREE.Vector3().crossVectors(UP, camOffset).normalize();
+  const qPitch = new THREE.Quaternion().setFromAxisAngle(right, -dy * ROT_SPEED);
+  camOffset.applyQuaternion(qPitch);
+  clampPitch();
+  camOffset.normalize();
+  updateCamera();
+}
+
+viewport.addEventListener('pointerdown', e => {
+  try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
   if (e.button === 0) isDragging = true;
   if (e.button === 2) {
     isPanning = true;
@@ -110,7 +131,8 @@ viewport.addEventListener('mousedown', e => {
   }
   prevMouse = {x: e.clientX, y: e.clientY};
 });
-window.addEventListener('mouseup', e => {
+
+function endPointer(e) {
   if (e.button === 2 && rightDownPos) {
     const dx = e.clientX - rightDownPos.x;
     const dy = e.clientY - rightDownPos.y;
@@ -123,15 +145,14 @@ window.addEventListener('mouseup', e => {
   }
   isDragging = false;
   isPanning = false;
-});
-window.addEventListener('mousemove', e => {
+}
+window.addEventListener('pointerup', endPointer);
+window.addEventListener('pointercancel', endPointer);
+
+window.addEventListener('pointermove', e => {
   const dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
   if (isDragging) {
-    spherical.theta -= dx * 0.008;
-    spherical.phi -= dy * 0.008;
-    // 移除角度限位，允许360度自由旋转
-    // spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi));
-    updateCamera();
+    orbitRotate(dx, dy);
   }
   if (isPanning) {
     const panSpeed = spherical.radius * 0.0015;
@@ -165,7 +186,8 @@ window.addEventListener('keydown', e => {
   const tag = (e.target && e.target.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   if (e.key === 'y' || e.key === 'Y') {
-    spherical.theta += Math.PI;
+    const q = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
+    camOffset.applyQuaternion(q);
     updateCamera();
   }
 });
@@ -352,7 +374,7 @@ function pickPoint(cx, cy) {
 }
 
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  return String(s).replace(/[&<>'"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
 function ensureMenu() {
