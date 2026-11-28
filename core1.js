@@ -1,8 +1,17 @@
 // ==================== Excel格式智能解析器 ====================
+// 控制列轴向归一化：兼容严格 X/Y/Z，以及“曲面点X / 曲面点Y / 曲面点Z”这类带后缀写法；
+// 曲面距离等标量行不含 X/Y/Z，直接忽略。
+function resolveAxis(raw) {
+  const a = String(raw == null ? '' : raw).trim().toUpperCase();
+  if (a === 'X' || a === 'Y' || a === 'Z') return a;
+  const m = a.match(/[XYZ]\s*$/);
+  return m ? m[0].trim() : null;
+}
+
 function parseExcelData(workbook) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  
+
   // 寻找表头行（包含"名称"+"控制"/"X"/"Y"/"Z"的行）
   let headerRow = -1;
   for (let i = 0; i < Math.min(20, data.length); i++) {
@@ -18,14 +27,14 @@ function parseExcelData(workbook) {
 
   const points = {};
   let nameCol = -1, axisCol = -1, nomCol = -1, measCol = -1, tolCol = -1;
-  
+
   // 自动识别列位置
   const header = data[headerRow].map(c => String(c).trim());
   header.forEach((h, idx) => {
     if (h.includes('名称') || h === '点名' || h === '点号' || h === '特征名') nameCol = idx;
     if (['X','Y','Z','x','y','z','控制','轴','方向'].includes(h)) axisCol = idx;
-    if (h.includes('名义') || h.includes('理论') || h === 'NOMINAL') nomCol = idx;
-    if (h.includes('测量') || h.includes('实测') || h === 'MEASURED') measCol = idx;
+    if (h.includes('名义') || h.includes('理论') || h.includes('标称') || h === 'NOMINAL' || h === 'NOM') nomCol = idx;
+    if (h.includes('测量') || h.includes('实测') || h === 'MEASURED' || h === 'MEAS') measCol = idx;
     if (h.includes('公差') || h === 'TOL' || h === '偏差带') tolCol = idx;
   });
 
@@ -39,14 +48,19 @@ function parseExcelData(workbook) {
   // 解析每行数据
   for (let i = headerRow + 1; i < data.length; i++) {
     const row = data[i];
-    if (!row || row.length < 5) continue;
+    if (!row || row.length < 2) continue;
     const name = String(row[nameCol] || '').trim();
-    const axis = String(row[axisCol] || '').trim().toUpperCase();
-    if (!name || !['X','Y','Z'].includes(axis)) continue;
+    // 跳过空行、分段重复表头行
+    if (!name || name === '名称' || name === '点名' || name === '点号') continue;
+
+    const axis = resolveAxis(row[axisCol]);
+    if (!axis) continue; // 非 X/Y/Z 行（曲面距离、单位/坐标系等元信息）一律忽略
 
     let nom = parseFloat(row[nomCol]);
     let meas = parseFloat(row[measCol]);
-    if (isNaN(nom) || isNaN(meas)) continue;
+    if (isNaN(nom) && isNaN(meas)) continue;
+    if (isNaN(nom)) nom = 0;
+    if (isNaN(meas)) meas = 0;
 
     // 解析公差（支持±0.7、0.7、+/-0.7等格式）
     let tol = 0.7;
@@ -76,9 +90,10 @@ function parseExcelData(workbook) {
     else if (axis === 'Z') { points[name].nz = nom; points[name].mz = meas; points[name].tz = tol; }
   }
 
-  // 过滤掉不完整的点（必须三个轴都有数据）
-  return Object.values(points).filter(p => 
-    !(p.nx === 0 && p.ny ===0 && p.nz ===0)
+  // 过滤掉名义/测量全为 0 的无效点
+  return Object.values(points).filter(p =>
+    !(p.nx === 0 && p.ny === 0 && p.nz === 0) &&
+    !(p.mx === 0 && p.my === 0 && p.mz === 0)
   );
 }
 
